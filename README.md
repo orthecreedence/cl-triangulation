@@ -9,7 +9,7 @@ detect this and reverse points as needed.
 
 ## Usage
 
-    (cl:triangulation:triangulate #((0 0) (0 1) (1 1) (1 0)))  ->
+    (cl-triangulation:triangulate #((0 0) (0 1) (1 1) (1 0)))  ->
 	    (((1 0) (0 1) (0 0)) ((1 0) (1 1) (0 1)))
 
 Pass it a vector of point pairs and it returns a list of triangles. A triangle
