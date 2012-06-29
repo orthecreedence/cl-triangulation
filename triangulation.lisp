@@ -106,7 +106,7 @@
                  (setf last-length (length points))))
       (when (< (length points) last-length-count)
         ;(format t "Endless loop with points: ~a~%" points)
-        (return-from triangulate nil)) ; (error 'triangulation-loop :points points)
+        (error 'triangulation-loop :points points))
       (let ((cur-point (aref points i))
             (next-point (aref points (mod (1+ i) (length points))))
             (next-next-point (aref points (mod (+ 2 i) (length points)))))
