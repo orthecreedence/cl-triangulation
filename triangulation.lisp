@@ -4,6 +4,9 @@
            :polygon-clockwise-p))
 (in-package :cl-triangulation)
 
+(declaim (optimize (speed 3)
+                   (safety 1)))
+
 (define-condition triangulation-loop (error)
   ((points :initarg :points :reader triangulation-loop-points))
   (:report (lambda (c s)
@@ -12,6 +15,7 @@
 
 (defun lines-intersect-p (l1x1 l1y1 l1x2 l1y2 l2x1 l2y1 l2x2 l2y2)
   "Detects if two lines intersect."
+  (declare (type float l1x1 l1y1 l1x2 l1y2 l2x1 l2y1 l2x2 l2y2))
   (let ((l1sx (- l1x2 l1x1))
         (l1sy (- l1y2 l1y1))
         (l2sx (- l2x2 l2x1))
@@ -34,6 +38,9 @@
              (< 0 lt 1))))))
 
 (defun point-in-polygon-p (point polygon-points)
+  "Tests if a point (x,y) is inside of a polygon."
+  (declare (type list point)
+           (type vector polygon-points))
   (let ((x (car point))
         (y (cadr point))
         (j (1- (length polygon-points)))
@@ -51,6 +58,10 @@
     c))
 
 (defun line-inside-polygon-p (line-points polygon-points)
+  "Given a line (two points) determin if the line falls completely inside the
+  polygon or not."
+  (declare (type list line-points)
+           (type vector polygon-points))
   (let ((lx1 (car line-points))
         (ly1 (cadr line-points))
         (lx2 (caddr line-points))
@@ -80,6 +91,8 @@
   t)
 
 (defun polygon-clockwise-p (polygon-points)
+  "Determine if the points of a polygon are in clockwise order."
+  (declare (type vector polygon-points))
   (let ((sum 0))
     (loop for i from 0 to (1- (length polygon-points))
           for cur-point = (aref polygon-points i)
@@ -89,6 +102,13 @@
     (< sum 0)))
 
 (defun triangulate (points)
+  "Given an array of points #((x1 y1) (x2 y2) ...), return a list of triangles
+  that constitute the greater object:
+
+    '(((x1 y1) (x2 y2) (x3 y3)) ...)
+
+  The idea is that you can take a polygon, and break it into triangles which
+  makes displaying in something like OpenGL extremely trivial."
   (assert (vectorp points))
   (let ((points (if (polygon-clockwise-p points) (reverse points) points))
         (triangles nil)
@@ -124,6 +144,6 @@
                       next-point
                       next-next-point)
                 triangles)
-          (setf points (remove-if (lambda (p) (equal p next-point)) points))
+          (setf points (remove-if (lambda (p) (eq p next-point)) points))
           (decf i))))
     triangles))
