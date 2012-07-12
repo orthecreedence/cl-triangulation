@@ -2,7 +2,8 @@
   (:use :cl)
   (:export :triangulate
            :polygon-clockwise-p
-           :triangulation-loop-points))
+           :triangulation-loop-points
+           :write-last-triangulation-to-file))
 (in-package :cl-triangulation)
 
 (declaim (optimize (speed 3)
@@ -103,7 +104,13 @@
               (setf (aref array (- i c)) cur)))))
     (adjust-array array (- l c))))
 
-(defparameter *trimmed* nil)
+(defparameter *last-triangulation-run-log* nil
+  "This holds a complete version of the polygon for each step of the 
+  triangulation, which can be incredibly useful for debugging or visualizing
+  the finished polygon without writing it to OpenGL or something (which is still
+  tricky to visualize since you need to space your triangles apart from each
+  other).")
+
 (defun triangulate (points)
   "Given an array of points #((x1 y1) (x2 y2) ...), return a list of triangles
   that constitute the greater object:
@@ -118,7 +125,10 @@
   algorithm. It is more accurate (especially for more complex polygons), but 
   much less efficient."
   (assert (vectorp points))
-  (setf *trimmed* nil)
+
+  ;; clear the log
+  (setf *last-triangulation-run-log* nil)
+
   (let ((points (if (polygon-clockwise-p points) (reverse points) points))
         (triangles nil)
         (last-length -1)
@@ -159,14 +169,48 @@
                        (setf intersect (point-in-triangle-p p tri))
                        (when intersect (return)))
                      (not intersect)))
-          (push points *trimmed*)
+          ;; write the current point data into the log
+          (push points *last-triangulation-run-log*)
+
           ;(format t "Made it: ~a, ~a~%" cur-point next-next-point)
           (push (list cur-point
                       next-point
                       next-next-point)
                 triangles)
+
           ;; remove the middle point form the point list (ie clip the ear)
           (setf points (remove-array-element points next-point))
+
           ;(setf points (remove-if (lambda (p) (eq p next-point)) points))
           (decf i 1))))
     triangles))
+
+(defun svg-from-polygons (polygons)
+  "Given a list of polygons (a polygon is a vector of list point pairs), create
+  an SVG string that displays all of the polygons in different colors for easy
+  visualization. Great for debugging with *last-triangulation-run-log*."
+  (let ((colors '("red" "green" "blue" "orange" "yellow" "red" "pink" "navy"))
+        (c 0))
+    (with-output-to-string (s)
+      (format s "<?xml version=\"1.0\" standalone=\"no\"?>
+              <!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">
+              <svg with=\"744\" height=\"1052\">~%")
+      (dolist (p polygons)
+        (let ((color (nth (mod c (length colors)) colors)))
+          (incf c)
+          (format s "<polygon fill=\"~a\" style=\"opacity: .3;\" points=\"" color))
+        (loop for i from 0 for (x y) across p do
+          (when (zerop (mod i 3)) (format s "~%      "))
+          (format s "~a,~a " x y))
+        (format s "\" />~%"))
+      (format s "</svg>"))))
+
+(defun write-last-triangulation-to-file (path)
+  "Wonderful debugging function that helps pinpoint where triangulation failed.
+  Outputs a (quite beautiful) visual breakdown of the triangulation from start
+  to finish (or start to error) into an SVG file (open with inkscape or AI or
+  whatever). It's mainly for me to fix triangulation errors, but it can also
+  output quite a pretty picture of what's going on under the hood."
+  (with-open-file (s path :direction :output :if-exists :supersede)
+    (format s (svg-from-polygons (reverse *last-triangulation-run-log*)))))
+
