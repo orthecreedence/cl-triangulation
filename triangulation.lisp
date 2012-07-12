@@ -158,7 +158,7 @@
                      (loop for p across points do
                        (setf intersect (point-in-triangle-p p tri))
                        (when intersect (return)))
-                     intersect))
+                     (not intersect)))
           (push points *trimmed*)
           ;(format t "Made it: ~a, ~a~%" cur-point next-next-point)
           (push (list cur-point
