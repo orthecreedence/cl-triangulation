@@ -120,7 +120,7 @@
             (dot02 (dot-prod v0 v2))
             (dot11 (dot-prod v1 v1))
             (dot12 (dot-prod v1 v2)))
-        (format t "00: ~a~%01: ~a~%02: ~a~%11: ~a~%12: ~a~%" dot00 dot01 dot02 dot11 dot12)
+        ;(format t "00: ~a~%01: ~a~%02: ~a~%11: ~a~%12: ~a~%" dot00 dot01 dot02 dot11 dot12)
         (let* ((div (- (* dot00 dot11) (* dot01 dot01)))
                (denom (/ 1 (if (zerop div) most-positive-single-float div)))
                (u (* denom (- (* dot11 dot02) (* dot01 dot12))))
@@ -189,7 +189,7 @@
                       (eq p next-next-point)))
           (setf intersect (point-in-triangle-p p triangle))
           (when intersect (return)))
-    (format t "points inside: ~a ~a~%~a~%" triangle intersect filtered-points)
+    ;(format t "points inside: ~a ~a~%~a~%" triangle intersect filtered-points)
     intersect))
 
 (defparameter *last-triangulation-run-log* nil
@@ -248,14 +248,14 @@
             (next-point (aref points (mod (1+ i) (length points))))
             (next-next-point (aref points (mod (+ 2 i) (length points)))))
         ;(format t "~a ~a ~a~%" cur-point next-point next-next-point)
-        (format t "~a ~a ~a angle: ~a~%" cur-point next-point next-next-point (angle-between-three-points cur-point next-point next-next-point))
+        ;(format t "~a ~a ~a angle: ~a~%" cur-point next-point next-next-point (angle-between-three-points cur-point next-point next-next-point))
         ;; check two things: that the angle of the current ear we're trimming 
         ;; is < 180, and that none of the points in the polygon are inside the
         ;; triangle we're about to clip
         (when (and (< (angle-between-three-points cur-point next-point next-next-point) 179)
                    (not (any-points-in-triangle-p  points (vector cur-point next-point next-next-point)))
                    (line-inside-polygon-p (list cur-point next-next-point) points :do-point-tests do-point-tests))
-          (format t "Made it, clipping: ~a~%" next-point)
+          ;(format t "Made it, clipping: ~a~%" next-point)
           ;; write the current point data into the log
           (when debug
             (push points *last-triangulation-run-log*))
