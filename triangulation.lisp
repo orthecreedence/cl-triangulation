@@ -48,7 +48,66 @@
              (theta (- theta-b theta-a)))
         (mod (* theta (/ 180 PI)) 360)))))
 
-(defun point-in-triangle-p (p triangle-points)
+(defun lines-intersect-p (l1x1 l1y1 l1x2 l1y2 l2x1 l2y1 l2x2 l2y2)
+  "Detects if two lines intersect."
+  (declare (type float l1x1 l1y1 l1x2 l1y2 l2x1 l2y1 l2x2 l2y2))
+  (let ((l1sx (- l1x2 l1x1))
+        (l1sy (- l1y2 l1y1))
+        (l2sx (- l2x2 l2x1))
+        (l2sy (- l2y2 l2y1)))
+    (let ((div (+ (* (- l2sx) l1sy) (* l1sx l2sy))))
+      (when (zerop div)
+        (return-from lines-intersect-p nil))
+      (let ((ls (/ (+ (* (- l1sy) (- l1x1 l2x1))
+                      (* l1sx (- l1y1 l2y1)))
+                   div))
+            (lt (/ (- (* l2sx (- l1y1 l2y1))
+                      (* l2sy (- l1x1 l2x1)))
+                   div)))
+        ;(format t "ls, lt: ~a, ~a~%" ls lt)
+        (and (not (or (and (= l1x1 l2x1) (= l1y1 l2y1))
+                      (and (= l1x1 l2x2) (= l1y1 l2y2))
+                      (and (= l1x2 l2x1) (= l1y2 l1y1))
+                      (and (= l1x2 l2x2) (= l1y2 l2y2))))
+             (< 0 ls 1)
+             (< 0 lt 1))))))
+
+(defun line-inside-polygon-p (line polygon-points &key do-point-tests)
+  "Given a line (two points) determine if the line falls completely inside the
+  polygon or not.
+  
+  If :do-points-tests is t, more accurate line testing is done to determine if
+  the line is truly in the polygon via checking points along the line itself.
+  This is more accurate (although usually not needed) but much less efficient."
+  (let ((lx1 (car (car line)))
+        (ly1 (cadr (car line)))
+        (lx2 (car (cadr line)))
+        (ly2 (cadr (cadr line))))
+    (dotimes (i (length polygon-points))
+      (let ((cur-point (aref polygon-points i))
+            (next-point (aref polygon-points (if (<= (length polygon-points) (1+ i)) 0 (1+ i)))))
+        (unless (and (eq lx1 (car cur-point))
+                     (eq ly1 (cadr cur-point))
+                     (eq lx2 (car next-point))
+                     (eq ly2 (cadr next-point)))
+          (when (lines-intersect-p lx1 ly1 lx2 ly2
+                                   (car cur-point) (cadr cur-point) (car next-point) (cadr next-point))
+            ;(format t "Got intersection in poly: ~a ~a~%" (list (list lx1 ly1) (list lx2 ly2)) (list cur-point next-point))
+            (return-from line-inside-polygon-p nil))
+          (when do-point-tests
+            (let* ((search-res 5)
+                   (x-inc (/ (- lx2 lx1) (1+ search-res)))
+                   (y-inc (/ (- ly2 ly1) (1+ search-res))))
+              (dotimes (i search-res)
+                (let ((x (+ lx1 (* (1+ i) x-inc)))
+                      (y (+ ly1 (* (1+ i) y-inc))))
+                  ;(format t "x,y: ~a,~a~%" x y)
+                  (unless (point-in-polygon-p (list x y polygon-points) polygon-points)
+                    ;(format t "Point ~a,~a is not inside poly.~%" x y)
+                    (return-from line-inside-polygon-p nil))))))))))
+  t)
+
+(defun point-in-triangle-p_ (p triangle-points)
   "Test if a point is inside of a triangle."
   (let ((a (aref triangle-points 0))
         (b (aref triangle-points 1))
@@ -61,34 +120,18 @@
             (dot02 (dot-prod v0 v2))
             (dot11 (dot-prod v1 v1))
             (dot12 (dot-prod v1 v2)))
+        (format t "00: ~a~%01: ~a~%02: ~a~%11: ~a~%12: ~a~%" dot00 dot01 dot02 dot11 dot12)
         (let* ((div (- (* dot00 dot11) (* dot01 dot01)))
                (denom (/ 1 (if (zerop div) most-positive-single-float div)))
                (u (* denom (- (* dot11 dot02) (* dot01 dot12))))
                (v (* denom (- (* dot00 dot12) (* dot01 dot02)))))
+          ;(format t "u: ~a, v: ~a, +: ~a~%" u v (+ u v))
           (values (and (>= u 0)
                        (>= v 0)
                        (< (+ u v) 1))
                   (list u v)))))))
 
-(defun point-in-triangle-p_ (p triangle-points)
-  "Test if a point is inside of a triangle."
-  (let ((a (aref triangle-points 0))
-        (b (aref triangle-points 1))
-        (c (aref triangle-points 2)))
-    (flet ((sign (a b c)
-             ; (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
-             (let ((ax (car a)) (ay (cadr a))
-                   (bx (car b)) (by (cadr b))
-                   (cx (car c)) (cy (cadr c)))
-               (- (* (- ax cx) (- by cy))
-                  (* (- bx cx) (- ay cy))))))
-      (let ((b1 (sign p a b))
-            (b2 (sign p b c))
-            (b3 (sign p c a)))
-        (and (= b1 b2)
-             (= b2 b3))))))
-
-(defun point-in-triangle-p__ (p triangle-points)
+(defun point-in-triangle-p (p triangle-points)
   "Test if a point is inside of a triangle."
   (let ((a (aref triangle-points 0))
         (b (aref triangle-points 1))
@@ -97,64 +140,15 @@
              (let ((ax (car a)) (ay (cadr a))
                    (bx (car b)) (by (cadr b))
                    (cx (car c)) (cy (cadr c)))
-             (/ (abs (- (+ (* ax by) (* bx cy) (* cx ay))
-                        (* ax cy) (* cx by) (* bx ay)))
+             (/ (- (* (- ax cx) (- by cy))
+                   (* (- bx cx) (- ay cy)))
                 2))))
-      (< (abs (- (+ (area p a b)
-                    (area p b c)
-                    (area p a c))
-                 (area a b c)))
-         0.0000000001))))
-
-(defun points-in-triangle (points triangle)
-  "Does a point-in-triangle-p test for each point in the polygon for the given
-  triangle."
-  (let* ((intersect nil)
-         (cur-point (aref triangle 0))
-         (next-point (aref triangle 1))
-         (next-next-point (aref triangle 2))
-         (filtered-points (remove-if (lambda (p) (or (eq p cur-point)
-                                                     (eq p next-point)
-                                                     (eq p next-next-point))) points)))
-    (loop for p across filtered-points do
-          (unless (or (eq p cur-point)
-                      (eq p next-point)
-                      (eq p next-next-point)))
-          (setf intersect (point-in-triangle-p p triangle))
-          (when intersect (return)))
-    intersect))
-
-(defun line-intersect-tests (line points index &optional search-num 4)
-  (let ((num-points (length points)))
-    (dotimes (i 4)
-      (let ((cur-line (list (aref points )
-                            (aref points ))))
-
-  (list cur-point next-next-point)
-                                              points i)
-
-(defun point-in-polygon-p (point polygon-points)
-  "Tests if a point (x,y) is inside of a polygon."
-  (declare (type list point)
-           (type vector polygon-points))
-  (let ((x (car point))
-        (y (cadr point))
-        (j (1- (length polygon-points)))
-        (c nil))
-    (dotimes (i (length polygon-points))
-      (let ((px (car (aref polygon-points i)))
-            (py (cadr (aref polygon-points i)))
-            (pjx (car (aref polygon-points j)))
-            (pjy (cadr (aref polygon-points j))))
-        (when (or (and (= x px) (= y py))
-                  (and (= x pjx) (= y pjy)))
-          (return-from point-in-polygon-p t))
-        (when (and (not (eq (> py y) (> pjy y)))
-                   (< x (+ (/ (* (- pjx px) (- y py))
-                              (- pjy py)) px)))
-          (setf c (not c))))
-      (setf j i))
-    c))
+      (let ((total (area a b c))
+            (pbc (area p b c))
+            (pac (area p a c))
+            (pab (area p a b)))
+        (values (< (+ pbc pac pab) total)
+                total pbc pac pab)))))
 
 (defun polygon-clockwise-p (polygon-points)
   "Determine if the points of a polygon are in clockwise order."
@@ -179,6 +173,25 @@
               (setf (aref array (- i c)) cur)))))
     (adjust-array array (- l c))))
 
+(defun any-points-in-triangle-p (points triangle)
+  "Does a point-in-triangle-p test for each point in the polygon for the given
+  triangle."
+  (let* ((intersect nil)
+         (cur-point (aref triangle 0))
+         (next-point (aref triangle 1))
+         (next-next-point (aref triangle 2))
+         (filtered-points (remove-if (lambda (p) (or (eq p cur-point)
+                                                     (eq p next-point)
+                                                     (eq p next-next-point))) points)))
+    (loop for p across filtered-points do
+          (unless (or (eq p cur-point)
+                      (eq p next-point)
+                      (eq p next-next-point)))
+          (setf intersect (point-in-triangle-p p triangle))
+          (when intersect (return)))
+    (format t "points inside: ~a ~a~%~a~%" triangle intersect filtered-points)
+    intersect))
+
 (defparameter *last-triangulation-run-log* nil
   "This holds a complete version of the polygon for each step of the 
   triangulation, which can be incredibly useful for debugging or visualizing
@@ -186,7 +199,7 @@
   tricky to visualize since you need to space your triangles apart from each
   other).")
 
-(defun triangulate (points &key debug)
+(defun triangulate (points &key do-point-tests debug)
   "Given an array of points #((x1 y1) (x2 y2) ...), return a list of triangles
   that constitute the greater object:
 
@@ -226,7 +239,8 @@
           (incf last-length-count)
           (progn (setf last-length-count 0)
                  (setf last-length (length points))))
-      (when (< (length points) last-length-count)
+      (when (> last-length-count (length points))
+        (push points *last-triangulation-run-log*)
         (error 'triangulation-loop :points points))
 
       ;; do our ear clipping here
@@ -234,15 +248,14 @@
             (next-point (aref points (mod (1+ i) (length points))))
             (next-next-point (aref points (mod (+ 2 i) (length points)))))
         ;(format t "~a ~a ~a~%" cur-point next-point next-next-point)
-        ;(format t "~a ~a ~a angle: ~a~%" cur-point next-point next-next-point (angle-between-three-points cur-point next-point next-next-point))
+        (format t "~a ~a ~a angle: ~a~%" cur-point next-point next-next-point (angle-between-three-points cur-point next-point next-next-point))
         ;; check two things: that the angle of the current ear we're trimming 
         ;; is < 180, and that none of the points in the polygon are inside the
         ;; triangle we're about to clip
         (when (and (< (angle-between-three-points cur-point next-point next-next-point) 179)
-                   (not (points-in-triangle points (vector cur-point next-point next-next-point)))
-                   (not (line-intersect-tests (list cur-point next-next-point)
-                                              points i)))
-          ;(format t "Made it.~%")
+                   (not (any-points-in-triangle-p  points (vector cur-point next-point next-next-point)))
+                   (line-inside-polygon-p (list cur-point next-next-point) points :do-point-tests do-point-tests))
+          (format t "Made it, clipping: ~a~%" next-point)
           ;; write the current point data into the log
           (when debug
             (push points *last-triangulation-run-log*))
