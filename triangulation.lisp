@@ -15,15 +15,22 @@
              (let ((points (triangulation-loop-points c)))
                (format s "Triangulation entered infinite loop on ~a points ~a" (length points) points)))))
 
-(defun normalize (x y)
+(defun normalize (v)
   "Normalize a 2D vector"
-  (let ((length (sqrt (+ (expt x 2) (expt y 2)))))
-    (list (/ x length) (/ y length))))
+  (let ((x (car v))
+        (y (cadr v)))
+    (let ((length (sqrt (+ (expt x 2) (expt y 2)))))
+      (list (/ x length) (/ y length)))))
 
 (defun dot-prod (v1 v2)
   "Give the dot product of two 2D vectors."
   (+ (* (car v1) (car v2))
      (* (cadr v1) (cadr v2))))
+
+(defun vec-sub (v1 v2)
+  "Subtract two vectors"
+  (list (- (car v1) (car v2))
+        (- (cadr v1) (cadr v2))))
 
 (defun angle-between-three-points (p1 p2 p3)
   "Given three points, calculate the angle between p1 and p3 with p2 being the
@@ -34,8 +41,8 @@
          (y1 (- (cadr p1) y2))
          (x3 (- (car p3) x2))
          (y3 (- (cadr p3) y2)))
-    (let ((v1 (normalize x1 y1))
-          (v2 (normalize x3 y3)))
+    (let ((v1 (normalize (list x1 y1)))
+          (v2 (normalize (list x3 y3))))
       (let* ((theta-a (atan (car v1) (cadr v1)))
              (theta-b (atan (car v2) (cadr v2)))
              (theta (- theta-b theta-a)))
@@ -46,17 +53,85 @@
   (let ((a (aref triangle-points 0))
         (b (aref triangle-points 1))
         (c (aref triangle-points 2)))
+    (let ((v0 (normalize (vec-sub c a)))
+          (v1 (normalize (vec-sub b a)))
+          (v2 (normalize (vec-sub p a))))
+      (let ((dot00 (dot-prod v0 v0))
+            (dot01 (dot-prod v0 v1))
+            (dot02 (dot-prod v0 v2))
+            (dot11 (dot-prod v1 v1))
+            (dot12 (dot-prod v1 v2)))
+        (let* ((div (- (* dot00 dot11) (* dot01 dot01)))
+               (denom (/ 1 (if (zerop div) most-positive-single-float div)))
+               (u (* denom (- (* dot11 dot02) (* dot01 dot12))))
+               (v (* denom (- (* dot00 dot12) (* dot01 dot02)))))
+          (values (and (>= u 0)
+                       (>= v 0)
+                       (< (+ u v) 1))
+                  (list u v)))))))
+
+(defun point-in-triangle-p_ (p triangle-points)
+  "Test if a point is inside of a triangle."
+  (let ((a (aref triangle-points 0))
+        (b (aref triangle-points 1))
+        (c (aref triangle-points 2)))
+    (flet ((sign (a b c)
+             ; (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+             (let ((ax (car a)) (ay (cadr a))
+                   (bx (car b)) (by (cadr b))
+                   (cx (car c)) (cy (cadr c)))
+               (- (* (- ax cx) (- by cy))
+                  (* (- bx cx) (- ay cy))))))
+      (let ((b1 (sign p a b))
+            (b2 (sign p b c))
+            (b3 (sign p c a)))
+        (and (= b1 b2)
+             (= b2 b3))))))
+
+(defun point-in-triangle-p__ (p triangle-points)
+  "Test if a point is inside of a triangle."
+  (let ((a (aref triangle-points 0))
+        (b (aref triangle-points 1))
+        (c (aref triangle-points 2)))
     (flet ((area (a b c)
              (let ((ax (car a)) (ay (cadr a))
                    (bx (car b)) (by (cadr b))
                    (cx (car c)) (cy (cadr c)))
              (/ (abs (- (+ (* ax by) (* bx cy) (* cx ay))
-                        (* ax cy) (* cx by) (* bx ay))) 2))))
+                        (* ax cy) (* cx by) (* bx ay)))
+                2))))
       (< (abs (- (+ (area p a b)
                     (area p b c)
                     (area p a c))
                  (area a b c)))
          0.0000000001))))
+
+(defun points-in-triangle (points triangle)
+  "Does a point-in-triangle-p test for each point in the polygon for the given
+  triangle."
+  (let* ((intersect nil)
+         (cur-point (aref triangle 0))
+         (next-point (aref triangle 1))
+         (next-next-point (aref triangle 2))
+         (filtered-points (remove-if (lambda (p) (or (eq p cur-point)
+                                                     (eq p next-point)
+                                                     (eq p next-next-point))) points)))
+    (loop for p across filtered-points do
+          (unless (or (eq p cur-point)
+                      (eq p next-point)
+                      (eq p next-next-point)))
+          (setf intersect (point-in-triangle-p p triangle))
+          (when intersect (return)))
+    intersect))
+
+(defun line-intersect-tests (line points index &optional search-num 4)
+  (let ((num-points (length points)))
+    (dotimes (i 4)
+      (let ((cur-line (list (aref points )
+                            (aref points ))))
+
+  (list cur-point next-next-point)
+                                              points i)
 
 (defun point-in-polygon-p (point polygon-points)
   "Tests if a point (x,y) is inside of a polygon."
@@ -94,8 +169,8 @@
 
 (defun remove-array-element (array item)
   "Remove an item from an array."
-  (let ((c 0)
-        (l (length array)))
+  (let* ((c 0)
+         (l (length array)))
     (dotimes (i l)
       (let ((cur (aref array i)))
         (if (eq item cur)
@@ -111,7 +186,7 @@
   tricky to visualize since you need to space your triangles apart from each
   other).")
 
-(defun triangulate (points)
+(defun triangulate (points &key debug)
   "Given an array of points #((x1 y1) (x2 y2) ...), return a list of triangles
   that constitute the greater object:
 
@@ -127,9 +202,11 @@
   (assert (vectorp points))
 
   ;; clear the log
-  (setf *last-triangulation-run-log* nil)
+  (when debug (setf *last-triangulation-run-log* nil))
 
-  (let ((points (if (polygon-clockwise-p points) (reverse points) points))
+  ;; copy the points (don't destroy original array) and setup for the
+  ;; triangulation loop
+  (let ((points (map 'vector (lambda (x) x) (if (polygon-clockwise-p points) (reverse points) points)))
         (triangles nil)
         (last-length -1)
         (last-length-count 0))
@@ -150,7 +227,6 @@
           (progn (setf last-length-count 0)
                  (setf last-length (length points))))
       (when (< (length points) last-length-count)
-        ;(format t "Endless loop with points: ~a~%" points)
         (error 'triangulation-loop :points points))
 
       ;; do our ear clipping here
@@ -162,15 +238,14 @@
         ;; check two things: that the angle of the current ear we're trimming 
         ;; is < 180, and that none of the points in the polygon are inside the
         ;; triangle we're about to clip
-        (when (and (< (angle-between-three-points cur-point next-point next-next-point) 178)
-                   (let ((intersect nil)
-                         (tri (vector cur-point next-point next-next-point)))
-                     (loop for p across points do
-                       (setf intersect (point-in-triangle-p p tri))
-                       (when intersect (return)))
-                     (not intersect)))
+        (when (and (< (angle-between-three-points cur-point next-point next-next-point) 179)
+                   (not (points-in-triangle points (vector cur-point next-point next-next-point)))
+                   (not (line-intersect-tests (list cur-point next-next-point)
+                                              points i)))
+          ;(format t "Made it.~%")
           ;; write the current point data into the log
-          (push points *last-triangulation-run-log*)
+          (when debug
+            (push points *last-triangulation-run-log*))
 
           ;(format t "Made it: ~a, ~a~%" cur-point next-next-point)
           (push (list cur-point
@@ -185,32 +260,44 @@
           (decf i 1))))
     triangles))
 
-(defun svg-from-polygons (polygons)
+(defun svg-from-polygons (polygons &key displace random-colors flip-y cols)
   "Given a list of polygons (a polygon is a vector of list point pairs), create
   an SVG string that displays all of the polygons in different colors for easy
   visualization. Great for debugging with *last-triangulation-run-log*."
   (let ((colors '("red" "green" "blue" "orange" "yellow" "red" "pink" "navy"))
-        (c 0))
+        (c 0)
+        (displace-cols (if cols cols (round (sqrt (length polygons))))))
     (with-output-to-string (s)
       (format s "<?xml version=\"1.0\" standalone=\"no\"?>
               <!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">
               <svg with=\"744\" height=\"1052\">~%")
       (dolist (p polygons)
-        (let ((color (nth (mod c (length colors)) colors)))
+        (let ((color (if random-colors (nth (mod c (length colors)) colors) "#677821"))
+              (displace-x (if displace (* displace (mod c displace-cols)) 0))
+              (displace-y (if displace (* displace (floor (/ c displace-cols))))))
+          (when displace
+            (let* ((pt (aref p 0))
+                   (x (car pt))
+                   (y (if flip-y (- (cadr pt)) (cadr pt)))
+                   (dx (+ (- displace-x 10) x))
+                   (dy (+ (- displace-y 10) y)))
+              (format s "<text x=\"~a\" y=\"~a\" font-size=\"12\">~a~a (~a, ~a)</text>~%" dx dy "P" c x y)))
           (incf c)
-          (format s "<polygon fill=\"~a\" style=\"opacity: .3;\" points=\"" color))
-        (loop for i from 0 for (x y) across p do
-          (when (zerop (mod i 3)) (format s "~%      "))
-          (format s "~a,~a " x y))
-        (format s "\" />~%"))
+          (format s "<polygon fill=\"~a\" style=\"opacity: ~a;\" points=\"" color (if displace 1 .3))
+          (loop for i from 0 for (x y) across p do
+            (when (zerop (mod i 3)) (format s "~%      "))
+            (format s "~a,~a " (+ x displace-x) (+ (if flip-y (- y) y) displace-y)))
+          (format s "\" />~%")
+          (loop for i from 0 for (x y) across p do
+            (format s "<rect x=\"~a\" y=\"~a\" width=\".05\" height=\".05\" fill=\"#000000\" />~%" (+ x displace-x) (+ (if flip-y (- y) y) displace-y)))))
       (format s "</svg>"))))
 
-(defun write-last-triangulation-to-file (path)
+(defun write-last-triangulation-to-file (path &key displace random-colors flip-y cols)
   "Wonderful debugging function that helps pinpoint where triangulation failed.
   Outputs a (quite beautiful) visual breakdown of the triangulation from start
   to finish (or start to error) into an SVG file (open with inkscape or AI or
   whatever). It's mainly for me to fix triangulation errors, but it can also
   output quite a pretty picture of what's going on under the hood."
   (with-open-file (s path :direction :output :if-exists :supersede)
-    (format s (svg-from-polygons (reverse *last-triangulation-run-log*)))))
+    (format s (svg-from-polygons (reverse *last-triangulation-run-log*) :displace displace :random-colors random-colors :flip-y flip-y :cols cols))))
 
