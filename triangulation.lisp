@@ -72,7 +72,7 @@
              (< 0 ls 1)
              (< 0 lt 1))))))
 
-(defun line-inside-polygon-p (line polygon-points &key do-point-tests)
+(defun line-inside-polygon-p (line polygon-points)
   "Given a line (two points) determine if the line falls completely inside the
   polygon or not.
   
@@ -93,18 +93,7 @@
           (when (lines-intersect-p lx1 ly1 lx2 ly2
                                    (car cur-point) (cadr cur-point) (car next-point) (cadr next-point))
             ;(format t "Got intersection in poly: ~a ~a~%" (list (list lx1 ly1) (list lx2 ly2)) (list cur-point next-point))
-            (return-from line-inside-polygon-p nil))
-          (when do-point-tests
-            (let* ((search-res 5)
-                   (x-inc (/ (- lx2 lx1) (1+ search-res)))
-                   (y-inc (/ (- ly2 ly1) (1+ search-res))))
-              (dotimes (i search-res)
-                (let ((x (+ lx1 (* (1+ i) x-inc)))
-                      (y (+ ly1 (* (1+ i) y-inc))))
-                  ;(format t "x,y: ~a,~a~%" x y)
-                  (unless (point-in-polygon-p (list x y polygon-points) polygon-points)
-                    ;(format t "Point ~a,~a is not inside poly.~%" x y)
-                    (return-from line-inside-polygon-p nil))))))))))
+            (return-from line-inside-polygon-p nil))))))
   t)
 
 (defun point-in-triangle-p_ (p triangle-points)
@@ -199,19 +188,14 @@
   tricky to visualize since you need to space your triangles apart from each
   other).")
 
-(defun triangulate (points &key do-point-tests debug)
+(defun triangulate (points &key debug)
   "Given an array of points #((x1 y1) (x2 y2) ...), return a list of triangles
   that constitute the greater object:
 
     '(((x1 y1) (x2 y2) (x3 y3)) ...)
 
   The idea is that you can take a polygon, and break it into triangles which
-  makes displaying in something like OpenGL extremely trivial.
-
-  The findings can sometime be innacurate, in which case passing :do-point-tests
-  as t will perform more accurate testing on the lines within the clipping
-  algorithm. It is more accurate (especially for more complex polygons), but 
-  much less efficient."
+  makes displaying in something like OpenGL extremely trivial."
   (assert (vectorp points))
 
   ;; clear the log
@@ -239,7 +223,7 @@
           (incf last-length-count)
           (progn (setf last-length-count 0)
                  (setf last-length (length points))))
-      (when (> last-length-count (length points))
+      (when (> last-length-count (* (length points) 2))
         (push points *last-triangulation-run-log*)
         (error 'triangulation-loop :points points))
 
@@ -252,9 +236,9 @@
         ;; check two things: that the angle of the current ear we're trimming 
         ;; is < 180, and that none of the points in the polygon are inside the
         ;; triangle we're about to clip
-        (when (and (< (angle-between-three-points cur-point next-point next-next-point) 179)
+        (when (and (< (angle-between-three-points cur-point next-point next-next-point) 180)
                    (not (any-points-in-triangle-p  points (vector cur-point next-point next-next-point)))
-                   (line-inside-polygon-p (list cur-point next-next-point) points :do-point-tests do-point-tests))
+                   (line-inside-polygon-p (list cur-point next-next-point) points))
           ;(format t "Made it, clipping: ~a~%" next-point)
           ;; write the current point data into the log
           (when debug
