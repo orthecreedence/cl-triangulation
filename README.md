@@ -1,3 +1,15 @@
+Unsupported
+===========
+Apologies to the millions of the users of this library...it is no longer supported.
+I have no plans to support it. It's *dead*. Please use my
+[glu-tessellate](https://github.com/orthecreedence/glu-tessellate) library for
+triangulation instead.
+
+This library works very well for simpler cases, but for more complicated polygons,
+flops with infinite loops and triangulation errors. What's more is it doesn't
+even touch polygon holes. [glu-tessellate](https://github.com/orthecreedence/glu-tessellate)
+*does* handle holes. If you have access to GLU, please use it instead.
+
 cl-triangulation
 ================
 
